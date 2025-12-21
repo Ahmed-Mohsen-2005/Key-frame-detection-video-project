@@ -4,3 +4,7 @@ opencv-python-headless
 numpy
 pandas
 pillow
+matplotlib
+scikit-learn
+seaborn
+tempfile
