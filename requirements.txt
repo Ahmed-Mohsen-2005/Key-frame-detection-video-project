@@ -7,4 +7,3 @@ pillow
 matplotlib
 scikit-learn
 seaborn
-tempfile
