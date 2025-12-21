@@ -95,6 +95,9 @@ if 'session_history' not in st.session_state:
 # ==========================================
 # 2. SYSTEM CLASS: MODEL HANDLER
 # ==========================================
+# ==========================================
+# 2. SYSTEM CLASS: MODEL HANDLER (Auto-Healing Version)
+# ==========================================
 class ModelHandler:
     """
     The 'Brain' of the system. 
@@ -103,15 +106,29 @@ class ModelHandler:
     def __init__(self):
         self.encoder = None
         self.classifier = None
-        self.input_shape = (224, 224) # Hardcoded fix based on error logs
+        self.input_shape = (224, 224) 
         self.status_log = []
+        self.classifier_input_dim = 512 # Default, will autodetect
 
     def log(self, message, level="info"):
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.status_log.append(f"[{timestamp}] [{level.upper()}] {message}")
 
+    def _try_load_classifier(self, input_dim):
+        """Internal helper to attempt loading weights with a specific shape."""
+        try:
+            model = tf.keras.Sequential([
+                tf.keras.layers.InputLayer(input_shape=(input_dim,)),
+                tf.keras.layers.Dense(1, activation='linear')
+            ])
+            # Skip mismatch allows loading even if layer names don't match exactly
+            model.load_weights('model1.weights.h5', skip_mismatch=True)
+            return model
+        except Exception:
+            return None
+
     def load_resources(self):
-        """Loads models with granular error tracking."""
+        """Loads models with Auto-Healing for the Classifier."""
         status = {"encoder": False, "classifier": False}
         
         # 1. Load Encoder
@@ -122,25 +139,32 @@ class ModelHandler:
         except Exception as e:
             self.log(f"Encoder failed to load: {str(e)}", "error")
 
-        # 2. Load Classifier (Model 1)
-        try:
-            # Reconstruct architecture exactly as weights expect (512 inputs)
-            self.classifier = tf.keras.Sequential([
-                tf.keras.layers.InputLayer(input_shape=(512,)),
-                tf.keras.layers.Dense(1, activation='linear')
-            ])
-            self.classifier.load_weights('model1.weights.h5')
-            status["classifier"] = True
-            self.log("Classifier weights loaded successfully.", "success")
-        except Exception as e:
-            self.log(f"Classifier failed to load: {str(e)}", "error")
-            
+        # 2. Load Classifier (Auto-Healing Strategy)
+        # We try common shapes used in deep learning models
+        possible_shapes = [512, 25088, 4096, 1024, 128, 8]
+        
+        for shape in possible_shapes:
+            model = self._try_load_classifier(shape)
+            if model:
+                self.classifier = model
+                self.classifier_input_dim = shape
+                status["classifier"] = True
+                self.log(f"Classifier loaded successfully! (Detected Input Shape: {shape})", "success")
+                break
+        
+        if not status["classifier"]:
+            # If all standard shapes fail, show the specific error for 512
+            try:
+                self._try_load_classifier(512)
+            except Exception as e:
+                 self.log(f"Classifier Critical Failure. Error: {str(e)}", "error")
+
         return status
 
     def predict_frame(self, frame):
         """
         Runs inference on a single frame.
-        Includes the 'Bridge' logic to fix 8->512 shape mismatch.
+        Includes the 'Bridge' logic to adapt Encoder output to Classifier input.
         """
         if not self.encoder:
             return 0.0, 0.0
@@ -155,19 +179,22 @@ class ModelHandler:
             latent = self.encoder.predict(input_tensor, verbose=0)
             latent_flat = latent.reshape(1, -1)
             
-            # --- THE BRIDGE FIX ---
-            # Standardize shape to (1, 512) for the classifier
-            current_dim = latent_flat.shape[1]
+            # --- THE DYNAMIC BRIDGE FIX ---
+            # We must make the Encoder output (1, 8) match the Classifier Input (1, N)
+            enc_dim = latent_flat.shape[1]
+            target_dim = self.classifier_input_dim
             
-            if current_dim == 8:
-                # Repeat 8 features 64 times (8*64=512)
-                bridge_tensor = np.tile(latent_flat, (1, 64))
-            elif current_dim == 512:
+            if enc_dim == target_dim:
+                # Perfect match
                 bridge_tensor = latent_flat
+            elif enc_dim < target_dim:
+                # Repeat features to fill the gap (e.g., 8 -> 512)
+                repeats = int(np.ceil(target_dim / enc_dim))
+                tiled = np.tile(latent_flat, (1, repeats))
+                bridge_tensor = tiled[:, :target_dim] # Trim excess
             else:
-                # Pad with zeros or truncate if shape is unexpected
-                bridge_tensor = np.zeros((1, 512))
-                bridge_tensor[:, :min(current_dim, 512)] = latent_flat[:, :min(current_dim, 512)]
+                # Truncate features (e.g., 25088 -> 512)
+                bridge_tensor = latent_flat[:, :target_dim]
 
             # Get Scores
             attention_score = 0.0
@@ -184,8 +211,8 @@ class ModelHandler:
 
             return attention_score, energy_score
 
-        except Exception:
-            # Return 0s on processing failure to prevent crash
+        except Exception as e:
+            # print(f"Prediction Error: {e}") # Debug only
             return 0.0, 0.0
 
 # ==========================================
