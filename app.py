@@ -17,7 +17,7 @@ from scipy.stats import zscore
 # ==========================================
 st.set_page_config(
     page_title="Deep Video Analyst: Titan Edition",
-    page_icon="👁️",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -510,7 +510,7 @@ def main():
             st.info("System Ready. Waiting for input.")
 
     # --- Main Header ---
-    st.title("👁️ Deep Video Analyst: Titan Edition")
+    st.title("Deep Video Analyst: Titan Edition")
     st.markdown("### Enterprise Video Intelligence & Forensics Platform")
     
     # 1. Initialize System
