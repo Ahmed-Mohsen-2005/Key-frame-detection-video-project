@@ -464,6 +464,39 @@ def main():
         ])
         
         with tab_overview:
+            st.subheader("🎯 Model Performance Metrics")
+            
+            m1_confidence = df_analyzed['norm_m1'].mean() * 100
+            m2_confidence = df_analyzed['norm_m2'].mean() * 100
+            avg_system_conf = (m1_confidence + m2_confidence) / 2
+
+            acc_col1, acc_col2, acc_col3 = st.columns(3)
+            
+            with acc_col1:
+                st.metric(
+                    label="Model 1 (Attention) Activation",
+                    value=f"{m1_confidence:.2f}%",
+                    delta=f"{m1_confidence - 50:.1f}% vs Baseline",
+                    help="Indicates how strongly the classifier reacted to the visual features on average."
+                )
+            
+            with acc_col2:
+                st.metric(
+                    label="Model 2 (Energy) Intensity",
+                    value=f"{m2_confidence:.2f}%",
+                    delta=f"{m2_confidence - 50:.1f}% vs Baseline",
+                    help="Indicates the average complexity/entropy detected in the latent space."
+                )
+
+            with acc_col3:
+                st.metric(
+                    label="Aggregate System Confidence",
+                    value=f"{avg_system_conf:.2f}%",
+                    delta="Final Assessment"
+                )
+            
+            st.divider()
+
             st.subheader("Global Timeline Analysis")
             fig_timeline = VisualizationEngine.plot_timeline(df_analyzed, scene_cuts)
             st.plotly_chart(fig_timeline, use_container_width=True)
